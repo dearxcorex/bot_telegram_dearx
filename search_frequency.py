@@ -1,88 +1,121 @@
-from langchain.agents.agent_types import AgentType
-from langchain_experimental.agents.agent_toolkits import create_pandas_dataframe_agent
-from langchain_openai import ChatOpenAI
-import pandas as pd 
 from telegram import Update
+from langgraph.prebuilt import ToolNode
+from langgraph.prebuilt import tools_condition
+from langgraph.graph import StateGraph, START, END
+from typing_extensions import TypedDict, Annotated
+from langgraph.graph.message import add_messages
+from langgraph.graph import MessagesState
+from langchain_core.messages import HumanMessage, SystemMessage
+import pandas as pd
 from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes,filters,MessageHandler,ConversationHandler
 import os 
 from dotenv import load_dotenv
+from pydantic import BaseModel
+from langchain_openai import ChatOpenAI
+load_dotenv()   
+#https://colab.research.google.com/drive/14ncV0nviLcP9IDzmFSRGSXb7Bgpz212v?usp=sharing
+#load csv 
+path = "frequency_analysis/merged_clean.csv"
 
-load_dotenv()
+df = pd.read_csv(path)
 
-#api
-OPENAI_API = os.getenv("OPENAI_API_KEY")
+class FrequencySearch(BaseModel):
+    freq: float
+    user: str
+    freq_range:list[float,float]
 
-custom_prompt ="""You are an expert AI assistant analyzing a pandas DataFrame containing frequency allocation data. 
-You can understand and respond in both English and Thai languages. Adapt your response language to match the user's query language.
+    
+class State(TypedDict):
+    messages: Annotated[list, add_messages]
 
-Key guidelines:
-1. Never use tables in your output. Present information clearly using bullet points or concise paragraphs.
-2. Always provide context about frequency ranges and their typical uses.
-3. Be precise with numbers and units (always use MHz for frequencies).
-4. If asked about specific users or bands, provide comprehensive information.
 
-DataFrame columns:
-- 'freq': Main frequency in MHz
-- 'rx': Receive frequency in MHz
-- 'tx': Transmit frequency in MHz
-- 'user': Frequency user or operator
-- 'band': Frequency band (MF, HF, VHF, UHF, SHF)
+def search_frequency(query:FrequencySearch) -> pd.DataFrame:
+    """Search for a frequency in the dataframe if not found return nearest frequency.
+    Args:
+        freq: Frequency to search for
+    """
+    q = query.freq
+    mask = df[df["freq"] == q]
+    if not mask.empty:
+        return mask
+    else: 
+        return df.iloc[(df["freq"] - q).abs().argsort()[:5]]
 
-Frequency band overview:
-- MF (300 kHz - 3 MHz): AM radio, maritime radio
-- HF (3 - 30 MHz): Shortwave radio, international broadcasting
-- VHF (30 - 300 MHz): FM radio, TV broadcasting, air traffic control
-- UHF (300 MHz - 3 GHz): TV broadcasting, cellular networks, Wi-Fi
-- SHF (3 - 30 GHz): Satellite communications, radar systems
+def search_frequency_user(query:FrequencySearch) -> pd.DataFrame:
+    """Search for a frequency user in the dataframe.
+    Args:
+        user: User to search for
+        freq: Frequency to search range 
+    """
+    q = query.user
+    f = query.freq_range
+    # print(q)
+    #filter range freqeuncy and user
+    mask = (df["freq"] >= f[0]) & (df["freq"] <= f[1]) & (df["user"] == q)
 
-When analyzing:
-1. Look for patterns or anomalies in frequency allocation.
-2. Consider the implications of frequency assignments for different users.
-3. Relate frequency bands to their common applications.
-4. When you don't know the answer, just say "I don't know" or find nearest frequency from the dataframe.
-Strive to provide valuable insights beyond just raw data retrieval.
+    return df[mask]
 
-คำแนะนำสำหรับการตอบคำถามภาษาไทย:
-1. ห้ามใช้ตารางในการแสดงผล ให้นำเสนอข้อมูลด้วยการใช้หัวข้อย่อยหรือย่อหน้าสั้นๆ
-2. ให้บริบทเกี่ยวกับช่วงความถี่และการใช้งานทั่วไปเสมอ
-3. ใช้ตัวเลขและหน่วยอย่างแม่นยำ (ใช้ MHz สำหรับความถี่เสมอ)
-4. หากถูกถามเกี่ยวกับผู้ใช้หรือย่านความถี่เฉพาะ ให้ข้อมูลที่ครอบคลุม
-5. วิเคราะห์รูปแบบหรือความผิดปกติในการจัดสรรความถี่
-6. พิจารณาผลกระทบของการกำหนดความถี่สำหรับผู้ใช้ต่างๆ
-7. เชื่อมโยงย่านความถี่กับการใช้งานทั่วไป
-8. เมื่อคุณไม่ทราบคำตอบ ให้พูดว่า "ฉันไม่ทราบ" หรือค้นหาความถี่ใกล้เคียงจากข้อมูลของคุณ
+tools = [search_frequency,search_frequency_user]
+model = ChatOpenAI(model="gpt-4o-mini",temperature=0)
+llm_with_tools = model.bind_tools(tools)
 
-พยายามให้ข้อมูลเชิงลึกที่มีคุณค่านอกเหนือจากการดึงข้อมูลดิบ
+
+prompt = """
+You are a expert in frequency allocation and analysis. 
+You are given a frequency and you need to find the nearest frequency or user column in the dataframe. If the frequency is not found, you need to return the nearest 5 frequency and  column user from the dataframe.
+
+if user spell wrong, you need to correct the user name and return the nearest user from the dataframe.
 """
+sys_msg = SystemMessage(content=prompt)
 
-class FrequencySearch:
-    def __init__(self):
-        self.agent = self.initialize_agent()
-        self.WAITING_FOR_FREQUENCY = 1
-    def initialize_agent(self): 
-        chat = ChatOpenAI(api_key=OPENAI_API,model='gpt-4o',temperature=0.0)
-        df = pd.read_csv("frequency_analysis/merged_clean.csv")
-        agent = create_pandas_dataframe_agent(chat,df,agent_type=AgentType.OPENAI_FUNCTIONS,verbose=True,prefix=custom_prompt,allow_dangerous_code=True)
-        return agent
+def chatbot(state:MessagesState):
+    return {"messages":[llm_with_tools.invoke([sys_msg] + state["messages"])]}
 
-    async def start_search_frequency(self,update:Update,context:ContextTypes.DEFAULT_TYPE) -> int:
-        await update.message.reply_text("Please enter the frequency you want to search for :")
-        return self.WAITING_FOR_FREQUENCY
+builder = StateGraph(MessagesState)
 
-    async def find_frequency_bot(self,update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-
-        message_text = update.message.text
-        response = self.agent.invoke(message_text)
-        final = response['output']
-        
-        await context.bot.send_message(chat_id=update._effective_chat.id, text=final,parse_mode="Markdown")
-        return ConversationHandler.END
-
-    async def end(update:Update,context:ContextTypes.DEFAULT_TYPE) ->int:
-        await update.message.reply_text("Search canceled.")
-        return ConversationHandler.END
+#add node
+builder.add_node("chatbot",chatbot)
+builder.add_node("tools",ToolNode(tools))
 
 
-frequency_search = FrequencySearch()
+
+# Add edges 
+builder.add_edge(START, "chatbot")
+builder.add_conditional_edges(
+    "chatbot",
+    tools_condition,
+    
+)
+
+builder.add_edge("tools","chatbot")
+react_graph = builder.compile()
+
+#Display graph  save as png
+react_graph.get_graph().draw_mermaid_png(output_file_path="frequency_analysis/frequency_analysis.png")
+
+
+
+
+
+# def print_stream(stream):
+#     for s in stream:
+#         message = s["messages"][-1]
+#         if isinstance(message, tuple):
+#             print(message)
+#         else:
+#             message.pretty_print()
+
+
+messages = [HumanMessage(content="what is  user frequency  กรมการสื่อสารทหาร and range 137-174 ?")]
+messages = react_graph.invoke({"messages":messages})
+
+
+for m in messages["messages"]:
+    m.pretty_print()
+
+# query = FrequencySearch(freq=0.0, user="กรมการสื่อสารทหาร",freq_range=[137,174])  # freq is required since it's part of the model
+# result = search_frequency_user(query)
+
+# print(result)
 
 
