@@ -8,7 +8,7 @@ from dotenv import load_dotenv
 
 
 #AI 
-from search_frequency import frequency_search
+from search_frequency import start_search_frequency,end,WAITING_FOR_FREQUENCY,find_frequency_bot
 
 # Set up logging 
 load_dotenv()
@@ -26,11 +26,11 @@ def main():
     #Initialize the bot app  
     app = ApplicationBuilder().token(bot_token).build()
     conv_hanler = ConversationHandler(
-        entry_points=[CommandHandler('freq',frequency_search.start_search_frequency)],
+        entry_points=[CommandHandler('freq',start_search_frequency)],
         states={
-            frequency_search.WAITING_FOR_FREQUENCY:[MessageHandler(filters.TEXT & ~ filters.COMMAND,frequency_search.find_frequency_bot)]
+            WAITING_FOR_FREQUENCY:[MessageHandler(filters.TEXT & ~ filters.COMMAND,find_frequency_bot)]
         },
-        fallbacks=[CommandHandler('end',frequency_search.end)]
+        fallbacks=[CommandHandler('end',end)]
     )
     app.add_handler(conv_hanler)
     
