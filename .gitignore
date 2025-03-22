@@ -82,5 +82,3 @@ instance/
 .env.local
 .env.*.local
 
-# Folder
-frequency_analysis/

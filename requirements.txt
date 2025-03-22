@@ -1,3 +1,6 @@
 python-telegram-bot
+pandas
 python-dotenv
-openai
+langchain
+langchain-openai
+langgraph
