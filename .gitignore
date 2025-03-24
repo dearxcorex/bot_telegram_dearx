@@ -82,3 +82,6 @@ instance/
 .env.local
 .env.*.local
 
+credentials.json
+token.json
+
