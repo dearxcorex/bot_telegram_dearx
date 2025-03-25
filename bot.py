@@ -106,12 +106,12 @@ def main():
 
     #add upload picture conversation handler
     upload_handler = ConversationHandler(
-        entry_points=[CommandHandler('upload',start_upload)],
+        entry_points=[CommandHandler('upload_picture',start_upload)],
         states={
             FOLDER_NAME:[MessageHandler(filters.TEXT & ~ filters.COMMAND,get_folder_name)],
             UPLOAD_PHOTO:[MessageHandler(filters.PHOTO,handle_picture),CommandHandler('cancel',cancel)]
         },
-        fallbacks=[CommandHandler('cancel',cancel)]
+        fallbacks=[CommandHandler('end_upload',cancel)]
     )
     app.add_handler(upload_handler)
     conv_hanler = ConversationHandler(
@@ -119,7 +119,7 @@ def main():
         states={
             WAITING_FOR_FREQUENCY:[MessageHandler(filters.TEXT & ~ filters.COMMAND,find_frequency_bot)]
         },
-        fallbacks=[CommandHandler('end',end)]
+        fallbacks=[CommandHandler('end_search_frequency',end)]
     )
     app.add_handler(conv_hanler)
     
