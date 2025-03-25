@@ -1,5 +1,5 @@
 import os.path
-
+import json
 from google.auth.transport.requests import Request
 from google.oauth2.credentials import Credentials
 from google_auth_oauthlib.flow import InstalledAppFlow
@@ -14,23 +14,26 @@ SCOPES = [
 ]
 
 def get_credentials():
-    """ Get and refresh Google Drive credentials"""
-    creds = None 
-    if os.path.exists('token.json'):
-        creds = Credentials.from_authorized_user_file('token.json',SCOPES)
-    if not creds or not creds.valid:
-        if creds and creds.expired and creds.refresh_token:
-            creds.refresh(Request())
-        else:
-            flow = InstalledAppFlow.from_client_secrets_file(
-                'credentials.json',
-                SCOPES
-            )
-            creds = flow.run_local_server(port=0)
-    with open('token.json','w') as token:
-        token.write(creds.to_json())
-    return creds
+    """Get credentials from environment variables"""
+    creds_json = {
+        "installed": {
+            "client_id": os.getenv("GOOGLE_CLIENT_ID"),
+            "project_id": os.getenv("GOOGLE_PROJECT_ID"),
+            "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+            "token_uri": "https://oauth2.googleapis.com/token",
+            "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs",
+            "client_secret": os.getenv("GOOGLE_CLIENT_SECRET"),
+            "redirect_uris": ["http://localhost"]
+        }
+    }
+ # Write temporary credentials file
+    with open('credentials.json', 'w') as f:
+        json.dump(creds_json, f)
 
+    # Rest of your credential logic
+    creds = None
+    if os.path.exists('token.json'):
+        creds = Credentials.from_authorized_user_file('token.json', SCOPES)
 
 def find_or_create_folder(service,folder_name,parent_id=None):
     """Find or create a folder in Google Drive"""
