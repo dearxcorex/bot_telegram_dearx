@@ -4,3 +4,6 @@ python-dotenv
 langchain
 langchain-openai
 langgraph
+google-api-python-client    # For Google Drive API
+google-auth-httplib2       # For Google authentication
+google-auth-oauthlib   
