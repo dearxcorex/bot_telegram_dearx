@@ -6,6 +6,9 @@ from google_auth_oauthlib.flow import InstalledAppFlow
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
 from googleapiclient.http import MediaFileUpload
+from dotenv import load_dotenv
+
+load_dotenv()
 
 SCOPES = [
     "https://www.googleapis.com/auth/drive.file",
@@ -26,14 +29,32 @@ def get_credentials():
             "redirect_uris": ["http://localhost"]
         }
     }
- # Write temporary credentials file
+    
+    # Write temporary credentials file
     with open('credentials.json', 'w') as f:
         json.dump(creds_json, f)
 
-    # Rest of your credential logic
     creds = None
+    # The file token.json stores the user's access and refresh tokens
     if os.path.exists('token.json'):
         creds = Credentials.from_authorized_user_file('token.json', SCOPES)
+    
+    # If there are no (valid) credentials available, let the user log in.
+    if not creds or not creds.valid:
+        if creds and creds.expired and creds.refresh_token:
+            creds.refresh(Request())
+        else:
+            flow = InstalledAppFlow.from_client_secrets_file(
+                'credentials.json',
+                SCOPES
+            )
+            creds = flow.run_local_server(port=0)
+        # Save the credentials for the next run
+        with open('token.json', 'w') as token:
+            token.write(creds.to_json())
+    
+    return creds
+   
 
 def find_or_create_folder(service,folder_name,parent_id=None):
     """Find or create a folder in Google Drive"""
